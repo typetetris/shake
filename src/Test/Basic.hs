@@ -20,6 +20,10 @@ main = shakeTest_ test $ do
         text2 <- readFile' "B.txt"
         writeFile' out $ text1 ++ text2
 
+    "ABn.txt" %> \out -> do
+        xs <-needHasChanged ["An.txt", "Bn.txt"]
+        writeFileLines out $ show <$> xs
+
     "twice.txt" %> \out -> do
         let src = "once.txt"
         need [src, src]
@@ -101,6 +105,23 @@ test build = do
     removeFile "AB.txt"
     build ["AB.txt"]
     assertContents "AB.txt" "AAAaaaBBB"
+
+    -- 
+    writeFile "An.txt" "1"
+    writeFile "Bn.txt" "1"
+    build ["ABn.txt", "--sleep"]
+    assertContents "ABn.txt" "True\nTrue\n"
+    writeFile "An.txt" "1"
+    build ["ABn.txt"]
+    assertContents "ABn.txt" "True\nFalse\n"
+    writeFile "Bn.txt" "1"
+    build ["ABn.txt"]
+    assertContents "ABn.txt" "False\nTrue\n"
+    build ["ABn.txt", "--sleep"]
+    assertContents "ABn.txt" "False\nTrue\n"
+    writeFile "ABn.txt" "bogus"
+    build ["ABn.txt"]
+    assertContents "ABn.txt" "False\nFalse\n"
 
     writeFile "zero.txt" "xxx"
     build ["twice.txt","--sleep"]
