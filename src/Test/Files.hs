@@ -40,6 +40,16 @@ main = shakeTest test optionsEnum $ \opts -> do
         writeFile' a "a"
         writeFile' b "b"
 
+    let batchTestTargets = ["An", "Bn"]
+    batchTestTargets &?%> \outs -> do
+        let batchTestSources = map (-<.> ".in") outs
+        xs <- needHasChanged batchTestSources
+        mapM_ ((`writeFile'` "1") . fst) $ filter snd $ zip outs xs
+
+    "On" %> \out -> do
+        xs <- needHasChanged batchTestTargets
+        writeFileLines out $ map show xs
+
     (\x -> let dir = takeDirectory x in
            if takeFileName dir /= "pred" then Nothing else Just [dir </> "a.txt",dir </> "b.txt"]) &?> \outs ->
         mapM_ (`writeFile'` "") outs
@@ -55,6 +65,32 @@ test build = do
         build ["clean"]
         build ["--no-build","--report=-"]
         build ["dir1/out.txt"]
+
+        writeFile "An.in" "1"
+        writeFile "Bn.in" "1"
+        build ["On", "--sleep"]
+        assertContents "On" "True\nTrue\n"
+        writeFile "An.in" "1"
+        build ["On"]
+        assertContents "On" "True\nFalse\n"
+        writeFile "Bn.in" "1"
+        build ["On"]
+        assertContents "On" "False\nTrue\n"
+        build ["On"]
+        assertContents "On" "False\nTrue\n"
+
+        -- this should still fail, batch rule should only rebuilt An, but rebuilds nothing
+        -- the reasoning is: We mess with one of the targets of the "batch" rule and expect
+        -- this target to be rebuild, but nothing happens, as the source didn't change :(
+        writeFile "An" "1"
+        build ["On"]
+        -- the desired behavior would be "True\nFalse\n" here.
+        assertContents "On" "False\nFalse\n"
+
+        writeFile "Bn" "1"
+        build ["On"]
+        -- the desired behavior would be "False\nTrue\n" here.
+        assertContents "On" "False\nFalse\n"
 
     build ["pred/a.txt"]
 
