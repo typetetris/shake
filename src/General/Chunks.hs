@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards, ScopedTypeVariables, CPP #-}
 
 module General.Chunks(
     Chunks,
@@ -21,7 +21,9 @@ import General.Extra
 import General.Cleanup
 import General.Thread
 import Prelude
-
+#ifndef mingw32_HOST_OS
+import System.Posix.IO
+#endif
 
 data Chunks = Chunks
     {chunksFileName :: FilePath
@@ -104,12 +106,29 @@ restoreChunksBackup file = do
         renameFile (backup file) file
         return True
 
+-- | Exactly like @openFile@ on Windows. On Linux make sure
+-- to close the file handle on exec.
+openFileCloseOnExec :: FilePath -> IOMode -> IO Handle
+
+#ifdef mingw32_HOST_OS
+
+openFileCloseOnExec = openFile
+
+#else
+
+openFileCloseOnExec path mode = do
+    handle <- openFile path mode
+    fd <- handleToFd handle
+    setFdOption fd CloseOnExec True
+    fdToHandle fd
+
+#endif
 
 usingChunks :: Cleanup -> FilePath -> Maybe Seconds -> IO Chunks
 usingChunks cleanup file flush = do
     h <- newEmptyMVar
     allocate cleanup
-        (putMVar h =<< openFile file ReadWriteMode)
+        (putMVar h =<< openFileCloseOnExec file ReadWriteMode)
         (const $ hClose =<< takeMVar h)
     return $ Chunks file flush h
 
